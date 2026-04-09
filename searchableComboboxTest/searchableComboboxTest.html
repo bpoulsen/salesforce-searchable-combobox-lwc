@@ -1,0 +1,17 @@
+<template>
+    <div class="slds-card slds-m-top_medium slds-p-around_medium slds-m-bottom_medium">
+        <div class="slds-text-title_caps slds-m-bottom_x-small">Dispatched values</div>
+        <div class="slds-m-bottom_x-small"><strong>Dropdown open:</strong> {isOpen}</div>
+        <div class="slds-m-bottom_x-small"><strong>Last event:</strong> {lastEventType}</div>
+        <template if:true={lastChangeDetail}>
+            <div class="slds-m-top_small slds-text-title_caps slds-m-bottom_x-small">Last change detail</div>
+            <div><strong>name:</strong> {lastChangeDetail.name}</div>
+            <div><strong>value:</strong> {lastChangeDetail.value}</div>
+            <div><strong>label:</strong> {lastChangeDetail.label}</div>
+        </template>
+    </div>
+
+    <c-searchable-combobox label="Search Accounts" name="accountId" options={accountOptions}
+        onchange={handleAccountChange} onopen={handleOpen} onclose={handleClose} placeholder="Search Accounts">
+    </c-searchable-combobox>
+</template>
