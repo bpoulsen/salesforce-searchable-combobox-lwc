@@ -6,6 +6,9 @@ import { LightningElement, api } from "lwc";
  * A lightweight, reusable searchable combobox (single-select) for Lightning Web Components.
  *
  * ## What it does
+ * - **Adapts to list size**: renders a standard `lightning-combobox` when there
+ *   are few options, and the searchable combobox when there are many. The
+ *   crossover point is controlled by `searchThreshold` (see below).
  * - **Displays** a searchable input that opens a dropdown list of options
  * - **Filters** options by keyword (case-insensitive substring match) as the user types
  * - **Supports keyboard navigation** while focus remains in the input:
@@ -23,7 +26,31 @@ import { LightningElement, api } from "lwc";
  * - `name` (String): included in the dispatched `change` event detail (useful for forms)
  * - `placeholder` (String): placeholder for the search input
  * - `options` (Array<{label: string, value: string}>): list of options to display
+ * - `searchThreshold` (Number, default `10`): controls the small-list fallback.
+ *   When `options.length <= searchThreshold`, the component renders a standard
+ *   `lightning-combobox` (the native Salesforce picker) instead of the searchable
+ *   combobox. When `options.length > searchThreshold`, the searchable combobox
+ *   is used. The check is reactive — if `options` or `searchThreshold` change
+ *   at runtime and the count crosses the threshold, the rendered control swaps
+ *   automatically. An undefined / non-array `options` keeps the searchable
+ *   path until data arrives. See "Adaptive rendering" below for parity details.
  * - `clear()` (Function): imperative API to clear the current selection and close the dropdown.
+ *
+ * ## Adaptive rendering (`searchThreshold`)
+ * The fallback `lightning-combobox` is a drop-in for parents — no consumer
+ * code needs to change when the threshold flips:
+ * - **`change` event**: re-dispatched with the same `{ name, value, label }`
+ *   detail shape used by the searchable path (the native combobox's raw
+ *   `event.detail.value` is translated by looking up the matching option).
+ * - **`open` / `close` events**: fired best-effort on the native combobox's
+ *   focus / blur. `lightning-combobox` doesn't expose dropdown lifecycle
+ *   events, so focus/blur is the closest available proxy.
+ * - **`clear()`**: works in both modes. In native mode, clearing nulls the
+ *   internal selection, which the bound `value` reflects, and dispatches
+ *   the same cleared `change` event.
+ * - **Selection persistence**: the internally tracked selection is shared
+ *   across both paths, so a value selected in one mode is preserved if the
+ *   options array later crosses the threshold.
  *
  * ## Events (parent-facing)
  * - **`change`** (bubbles + composed):
@@ -77,6 +104,31 @@ import { LightningElement, api } from "lwc";
  *
  * Where `accountOptions` is an array like:
  * `[{ label: 'Acme', value: '001...' }, ...]`
+ *
+ * ## Example: tuning `searchThreshold`
+ *
+ * Force the searchable UI even for tiny lists by setting the threshold to `0`:
+ *
+ * ```html
+ * <c-searchable-combobox
+ *   label="Status"
+ *   options={statusOptions}
+ *   search-threshold="0"
+ *   onchange={handleStatusChange}>
+ * </c-searchable-combobox>
+ * ```
+ *
+ * Or always use the native `lightning-combobox` regardless of size by setting
+ * a very large threshold:
+ *
+ * ```html
+ * <c-searchable-combobox
+ *   label="Status"
+ *   options={statusOptions}
+ *   search-threshold="9999"
+ *   onchange={handleStatusChange}>
+ * </c-searchable-combobox>
+ * ```
  */
 let domIdSequence = 0;
 
@@ -102,6 +154,7 @@ export default class SearchableCombobox extends LightningElement {
   @api label = "Searchable Combobox";
   @api name;
   @api placeholder = "Search";
+  @api searchThreshold = 10;
 
   @api
   get options() {
@@ -118,6 +171,31 @@ export default class SearchableCombobox extends LightningElement {
     }
   }
 
+  /**
+   * Decides which control renders. Returns true when the option list is short
+   * enough (`length <= searchThreshold`) to defer to the native
+   * `lightning-combobox`; false uses the searchable combobox. Re-evaluated on
+   * every render, so changes to `options` or `searchThreshold` swap the
+   * rendered control automatically. Undefined / non-array `options` stays on
+   * the searchable path so we don't render an empty native combobox while
+   * data is loading.
+   */
+  get showNativeCombobox() {
+    return (
+      Array.isArray(this._options) &&
+      this._options.length <= this.searchThreshold
+    );
+  }
+
+  /**
+   * The selected option's `value` (not its `label`), bound to the native
+   * `lightning-combobox`'s `value` attribute. The searchable path uses
+   * `selectedValue` instead, which exposes the label for the search input.
+   */
+  get nativeSelectedValue() {
+    return this.selectedSearchResult?.value ?? null;
+  }
+
   @api
   clear() {
     if (this.selectedSearchResult) {
@@ -131,6 +209,12 @@ export default class SearchableCombobox extends LightningElement {
     const n = ++domIdSequence;
     this.domIdPrefix = `searchable-combobox-${n}`;
     this.listboxId = `${this.domIdPrefix}-listbox`;
+  }
+
+  renderedCallback() {
+    if (this.showNativeCombobox && this.searchResults) {
+      this.clearSearchResults();
+    }
   }
 
   get selectedValue() {
@@ -293,6 +377,45 @@ export default class SearchableCombobox extends LightningElement {
         },
       }),
     );
+  }
+
+  /**
+   * Bridges the native `lightning-combobox`'s `change` event to the same
+   * `{ name, value, label }` detail shape parents already expect from the
+   * searchable path. The native event only carries `event.detail.value`, so
+   * we look up the matching option to recover the label. An empty value is
+   * treated as a clear (mirrors searchable input behavior on full delete).
+   */
+  handleNativeChange(event) {
+    event.stopPropagation();
+    const value = event?.detail?.value;
+    if (value == null || value === "") {
+      if (this.selectedSearchResult) {
+        this.selectedSearchResult = null;
+        this.dispatchChange();
+      }
+      return;
+    }
+    const match = (this._options || []).find((opt) => opt.value === value);
+    if (!match) {
+      return;
+    }
+    this.selectedSearchResult = match;
+    this.dispatchChange();
+  }
+
+  /**
+   * Native combobox focus/blur are used as a best-effort proxy for the
+   * `open`/`close` parent events, since `lightning-combobox` doesn't expose
+   * dropdown lifecycle events. This keeps consumers wired with `onopen` /
+   * `onclose` working in both rendering modes.
+   */
+  handleNativeFocus() {
+    this.notifyPanelOpened();
+  }
+
+  handleNativeBlur() {
+    this.notifyPanelClosed();
   }
 
   normalizeKey(event) {

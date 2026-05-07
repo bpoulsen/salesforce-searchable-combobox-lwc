@@ -1,40 +1,48 @@
 <template>
-    <div class="slds-form-element" role="group" aria-label={label}>
-        <div class="slds-form-element__control">
-            <div class="searchable-combobox__input-wrap" onmousedown={openDropdownIfClosed}>
-                <lightning-input label={label} name={name} onchange={search} onfocus={openDropdownIfClosed}
-                    onkeydown={handleInputKeydown} type="search" value={selectedValue} placeholder={placeholder}>
-                </lightning-input>
-            </div>
-            <div if:true={searchResults} data-listbox-scroll
-                class="slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid" id={listboxId} role="listbox"
-                aria-label={listboxAriaLabel} aria-multiselectable="false"
-                onmousedown={suppressListboxMouseDownPropagation}>
-                <ul class="slds-listbox slds-listbox_vertical" role="presentation">
-                    <template for:each={listItems} for:item="row">
-                        <li key={row.key} data-value={row.value} data-option-index={row.index} role="presentation"
-                            onclick={selectSearchResult} onmouseenter={handleOptionMouseEnter}
-                            class="slds-listbox__item">
-                            <div id={row.optionDomId} class={row.optionClass} role="option"
-                                aria-selected={row.isSelected}>
-                                <span class="slds-media__figure slds-listbox__option-icon">
-                                    <template if:true={row.isSelected}>
-                                        <lightning-icon icon-name="utility:check" size="x-small"
-                                            alternative-text="Selected"
-                                            class="slds-icon-utility-check slds-icon_container">
-                                        </lightning-icon>
-                                    </template>
-                                </span>
-                                <span class="slds-media__body">
-                                    <span class="slds-truncate" title={row.label}>
-                                        {row.label}
+    <template if:true={showNativeCombobox}>
+        <lightning-combobox label={label} name={name} placeholder={placeholder} options={options}
+            value={nativeSelectedValue} onchange={handleNativeChange} onfocus={handleNativeFocus}
+            onblur={handleNativeBlur}>
+        </lightning-combobox>
+    </template>
+    <template if:false={showNativeCombobox}>
+        <div class="slds-form-element" role="group" aria-label={label}>
+            <div class="slds-form-element__control">
+                <div class="searchable-combobox__input-wrap" onmousedown={openDropdownIfClosed}>
+                    <lightning-input label={label} name={name} onchange={search} onfocus={openDropdownIfClosed}
+                        onkeydown={handleInputKeydown} type="search" value={selectedValue} placeholder={placeholder}>
+                    </lightning-input>
+                </div>
+                <div if:true={searchResults} data-listbox-scroll
+                    class="slds-dropdown slds-dropdown_length-5 slds-dropdown_fluid" id={listboxId} role="listbox"
+                    aria-label={listboxAriaLabel} aria-multiselectable="false"
+                    onmousedown={suppressListboxMouseDownPropagation}>
+                    <ul class="slds-listbox slds-listbox_vertical" role="presentation">
+                        <template for:each={listItems} for:item="row">
+                            <li key={row.key} data-value={row.value} data-option-index={row.index} role="presentation"
+                                onclick={selectSearchResult} onmouseenter={handleOptionMouseEnter}
+                                class="slds-listbox__item">
+                                <div id={row.optionDomId} class={row.optionClass} role="option"
+                                    aria-selected={row.isSelected}>
+                                    <span class="slds-media__figure slds-listbox__option-icon">
+                                        <template if:true={row.isSelected}>
+                                            <lightning-icon icon-name="utility:check" size="x-small"
+                                                alternative-text="Selected"
+                                                class="slds-icon-utility-check slds-icon_container">
+                                            </lightning-icon>
+                                        </template>
                                     </span>
-                                </span>
-                            </div>
-                        </li>
-                    </template>
-                </ul>
+                                    <span class="slds-media__body">
+                                        <span class="slds-truncate" title={row.label}>
+                                            {row.label}
+                                        </span>
+                                    </span>
+                                </div>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
             </div>
         </div>
-    </div>
+    </template>
 </template>
