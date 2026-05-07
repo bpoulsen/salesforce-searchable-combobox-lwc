@@ -23,6 +23,7 @@ import { LightningElement, api } from "lwc";
  * - `name` (String): included in the dispatched `change` event detail (useful for forms)
  * - `placeholder` (String): placeholder for the search input
  * - `options` (Array<{label: string, value: string}>): list of options to display
+ * - `clear()` (Function): imperative API to clear the current selection and close the dropdown.
  *
  * ## Events (parent-facing)
  * - **`change`** (bubbles + composed):
@@ -115,6 +116,15 @@ export default class SearchableCombobox extends LightningElement {
     } else {
       this.pickListOrdered = undefined;
     }
+  }
+
+  @api
+  clear() {
+    if (this.selectedSearchResult) {
+      this.selectedSearchResult = null;
+      this.dispatchChange();
+    }
+    this.clearSearchResults();
   }
 
   connectedCallback() {
