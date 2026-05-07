@@ -80,509 +80,500 @@ import { LightningElement, api } from "lwc";
 let domIdSequence = 0;
 
 export default class SearchableCombobox extends LightningElement {
-    static delegatesFocus = true;
+  static delegatesFocus = true;
 
-    pickListOrdered;
-    searchResults;
-    selectedSearchResult;
-    highlightedIndex = -1;
+  pickListOrdered;
+  searchResults;
+  selectedSearchResult;
+  highlightedIndex = -1;
 
-    outsideClickScheduleId;
-    outsideDismissListenerAttached = false;
+  outsideClickScheduleId;
+  outsideDismissListenerAttached = false;
 
-    /** True while the options panel is shown (for open/close events). */
-    _panelOpen = false;
+  /** True while the options panel is shown (for open/close events). */
+  _panelOpen = false;
 
-    domIdPrefix;
-    listboxId;
+  domIdPrefix;
+  listboxId;
 
-    _options;
+  _options;
 
-    @api label = "Searchable Combobox";
-    @api name;
-    @api placeholder = "Search";
+  @api label = "Searchable Combobox";
+  @api name;
+  @api placeholder = "Search";
 
-    @api
-    get options() {
-        return this._options;
+  @api
+  get options() {
+    return this._options;
+  }
+  set options(value) {
+    this._options = value;
+    if (Array.isArray(value) && value.length > 0) {
+      this.pickListOrdered = [...value].sort((a, b) =>
+        a.label.localeCompare(b.label),
+      );
+    } else {
+      this.pickListOrdered = undefined;
     }
-    set options(value) {
-        this._options = value;
-        if (Array.isArray(value) && value.length > 0) {
-            this.pickListOrdered = [...value].sort((a, b) =>
-                a.label.localeCompare(b.label)
-            );
-        } else {
-            this.pickListOrdered = undefined;
+  }
+
+  connectedCallback() {
+    const n = ++domIdSequence;
+    this.domIdPrefix = `searchable-combobox-${n}`;
+    this.listboxId = `${this.domIdPrefix}-listbox`;
+  }
+
+  get selectedValue() {
+    return this.selectedSearchResult?.label ?? null;
+  }
+
+  get panelIsOpen() {
+    return Array.isArray(this.searchResults);
+  }
+
+  get listboxAriaLabel() {
+    return `${this.label}. Type to filter. Use arrow keys to choose an option.`;
+  }
+
+  get listItems() {
+    const results = this.searchResults;
+    if (!results || !results.length) {
+      return [];
+    }
+    const selectedVal = this.selectedSearchResult?.value;
+    const hi = this.highlightedIndex;
+    const base =
+      "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small slds-media_center";
+    return results.map((opt, index) => ({
+      key: opt.value,
+      label: opt.label,
+      value: opt.value,
+      index,
+      optionDomId: `${this.domIdPrefix}-opt-${index}`,
+      isSelected: opt.value === selectedVal,
+      isHighlighted: index === hi,
+      optionClass: base + (index === hi ? " slds-has-focus" : ""),
+    }));
+  }
+
+  boundCloseOnOutsideMouseDown = (event) => {
+    this.handleOutsideMouseDown(event);
+  };
+
+  disconnectedCallback() {
+    this.teardownOutsideDismissListener();
+  }
+
+  /**
+   * True if the event target lies inside this component, including nested
+   * shadow roots (e.g. lightning-input). Uses composedPath when available,
+   * then walks shadow hosts — click/mousedown retargeting varies by runtime.
+   */
+  isEventInsideThisComponent(event) {
+    const host = this.template.host;
+    if (!host) {
+      return false;
+    }
+    if (typeof event.composedPath === "function") {
+      try {
+        const path = event.composedPath();
+        if (path && path.includes(host)) {
+          return true;
         }
+      } catch (e) {
+        // composedPath can throw under some sandboxed runtimes; fall through to host walk.
+      }
     }
-
-    connectedCallback() {
-        const n = ++domIdSequence;
-        this.domIdPrefix = `searchable-combobox-${n}`;
-        this.listboxId = `${this.domIdPrefix}-listbox`;
+    let node = event.target;
+    if (!node) {
+      return false;
     }
-
-    get selectedValue() {
-        return this.selectedSearchResult?.label ?? null;
-    }
-
-    get panelIsOpen() {
-        return Array.isArray(this.searchResults);
-    }
-
-    get listboxAriaLabel() {
-        return `${this.label}. Type to filter. Use arrow keys to choose an option.`;
-    }
-
-    get listItems() {
-        const results = this.searchResults;
-        if (!results || !results.length) {
-            return [];
-        }
-        const selectedVal = this.selectedSearchResult?.value;
-        const hi = this.highlightedIndex;
-        const base =
-            "slds-media slds-listbox__option slds-listbox__option_plain slds-media_small slds-media_center";
-        return results.map((opt, index) => ({
-            key: opt.value,
-            label: opt.label,
-            value: opt.value,
-            index,
-            optionDomId: `${this.domIdPrefix}-opt-${index}`,
-            isSelected: opt.value === selectedVal,
-            isHighlighted: index === hi,
-            optionClass:
-                base + (index === hi ? " slds-has-focus" : "")
-        }));
-    }
-
-    boundCloseOnOutsideMouseDown = (event) => {
-        this.handleOutsideMouseDown(event);
-    };
-
-    disconnectedCallback() {
-        this.teardownOutsideDismissListener();
-    }
-
-    /**
-     * True if the event target lies inside this component, including nested
-     * shadow roots (e.g. lightning-input). Uses composedPath when available,
-     * then walks shadow hosts — click/mousedown retargeting varies by runtime.
-     */
-    isEventInsideThisComponent(event) {
-        const host = this.template.host;
-        if (!host) {
-            return false;
-        }
-        if (typeof event.composedPath === "function") {
-            try {
-                const path = event.composedPath();
-                if (path && path.includes(host)) {
-                    return true;
-                }
-            } catch (e) {
-                debugLog("composedPath failed", e);
-            }
-        }
-        let node = event.target;
-        if (!node) {
-            return false;
-        }
-        while (node) {
-            if (node === host) {
-                return true;
-            }
-            const root = node.getRootNode();
-            if (root instanceof ShadowRoot) {
-                node = root.host;
-            } else {
-                return false;
-            }
-        }
+    while (node) {
+      if (node === host) {
+        return true;
+      }
+      const root = node.getRootNode();
+      if (root instanceof ShadowRoot) {
+        node = root.host;
+      } else {
         return false;
+      }
     }
+    return false;
+  }
 
-    /**
-     * Registers a delayed document listener so the opening pointer gesture does
-     * not dismiss the list. Uses mousedown (not click): the mouseup "click" after
-     * press-and-hold can bubble to document and falsely read as outside under LWS.
-     */
-    ensureOutsideDismissListenerSoon() {
-        if (this.outsideDismissListenerAttached || !this.searchResults) {
-            return;
-        }
-        if (this.outsideClickScheduleId != null) {
-            window.clearTimeout(this.outsideClickScheduleId);
-        }
-        this.outsideClickScheduleId = window.setTimeout(() => {
-            this.outsideClickScheduleId = null;
-            if (this.searchResults && !this.outsideDismissListenerAttached) {
-                document.addEventListener(
-                    "mousedown",
-                    this.boundCloseOnOutsideMouseDown,
-                    false
-                );
-                this.outsideDismissListenerAttached = true;
-                debugLog("attached document mousedown dismiss listener");
-            }
-        }, 0);
+  /**
+   * Registers a delayed document listener so the opening pointer gesture does
+   * not dismiss the list. Uses mousedown (not click): the mouseup "click" after
+   * press-and-hold can bubble to document and falsely read as outside under LWS.
+   */
+  ensureOutsideDismissListenerSoon() {
+    if (this.outsideDismissListenerAttached || !this.searchResults) {
+      return;
     }
-
-    teardownOutsideDismissListener() {
-        if (this.outsideClickScheduleId != null) {
-            window.clearTimeout(this.outsideClickScheduleId);
-            this.outsideClickScheduleId = null;
-        }
-        if (this.outsideDismissListenerAttached) {
-            document.removeEventListener(
-                "mousedown",
-                this.boundCloseOnOutsideMouseDown,
-                false
-            );
-            this.outsideDismissListenerAttached = false;
-            debugLog("removed document mousedown dismiss listener");
-        }
+    if (this.outsideClickScheduleId != null) {
+      window.clearTimeout(this.outsideClickScheduleId);
     }
-
-    handleOutsideMouseDown(event) {
-        if (!this.searchResults) {
-            return;
-        }
-        const inside = this.isEventInsideThisComponent(event);
-        debugLog("outside mousedown", {
-            inside,
-            type: event.type,
-            tag: event.target && event.target.tagName
-        });
-        if (!inside) {
-            this.clearSearchResults();
-        }
-    }
-
-    notifyPanelOpened() {
-        if (!this._panelOpen) {
-            this._panelOpen = true;
-            this.dispatchEvent(
-                new CustomEvent("open", { bubbles: true, composed: true })
-            );
-        }
-    }
-
-    notifyPanelClosed() {
-        if (this._panelOpen) {
-            this._panelOpen = false;
-            this.dispatchEvent(
-                new CustomEvent("close", { bubbles: true, composed: true })
-            );
-        }
-    }
-
-    dispatchChange() {
-        const sel = this.selectedSearchResult;
-        this.dispatchEvent(
-            new CustomEvent("change", {
-                bubbles: true,
-                composed: true,
-                detail: {
-                    value: sel ? sel.value : undefined,
-                    label: sel ? sel.label : undefined,
-                    name: this.name
-                }
-            })
+    this.outsideClickScheduleId = window.setTimeout(() => {
+      this.outsideClickScheduleId = null;
+      if (this.searchResults && !this.outsideDismissListenerAttached) {
+        document.addEventListener(
+          "mousedown",
+          this.boundCloseOnOutsideMouseDown,
+          false,
         );
-    }
+        this.outsideDismissListenerAttached = true;
+      }
+    }, 0);
+  }
 
-    normalizeKey(event) {
-        if (event.key) {
-            return event.key;
-        }
-        const d = event.detail;
-        if (d && d.key) {
-            return d.key;
-        }
-        const code = event.keyCode ?? d?.keyCode;
-        const map = {
-            40: "ArrowDown",
-            38: "ArrowUp",
-            13: "Enter",
-            27: "Escape",
-            36: "Home",
-            35: "End",
-            33: "PageUp",
-            34: "PageDown"
-        };
-        return map[code] || "";
+  teardownOutsideDismissListener() {
+    if (this.outsideClickScheduleId != null) {
+      window.clearTimeout(this.outsideClickScheduleId);
+      this.outsideClickScheduleId = null;
     }
-
-    handleInputKeydown(event) {
-        const key = this.normalizeKey(event);
-        let handled = false;
-        switch (key) {
-            case "ArrowDown":
-                handled = this.handleArrowDown();
-                break;
-            case "ArrowUp":
-                handled = this.handleArrowUp();
-                break;
-            case "Home":
-                handled = this.handleHomeKey();
-                break;
-            case "End":
-                handled = this.handleEndKey();
-                break;
-            case "PageUp":
-                handled = this.handlePageUpKey();
-                break;
-            case "PageDown":
-                handled = this.handlePageDownKey();
-                break;
-            case "Enter":
-                handled = this.handleEnterKey();
-                break;
-            case "Escape":
-                handled = this.handleEscapeKey();
-                break;
-            default:
-                break;
-        }
-        if (handled) {
-            event.preventDefault();
-        }
+    if (this.outsideDismissListenerAttached) {
+      document.removeEventListener(
+        "mousedown",
+        this.boundCloseOnOutsideMouseDown,
+        false,
+      );
+      this.outsideDismissListenerAttached = false;
     }
+  }
 
-    handleArrowDown() {
-        if (!this.pickListOrdered?.length) {
-            return false;
-        }
-        if (!this.searchResults) {
-            const wasClosed = !this.panelIsOpen;
-            this.searchResults = this.pickListOrdered;
-            this.highlightedIndex = 0;
-            this.ensureOutsideDismissListenerSoon();
-            if (wasClosed) {
-                this.notifyPanelOpened();
-            }
-            this.scheduleScrollToHighlight();
-            return true;
-        }
-        const len = this.searchResults.length;
-        if (len === 0) {
-            return false;
-        }
-        if (this.highlightedIndex < 0) {
-            this.highlightedIndex = 0;
-        } else {
-            this.highlightedIndex = Math.min(this.highlightedIndex + 1, len - 1);
-        }
-        this.scheduleScrollToHighlight();
-        return true;
+  handleOutsideMouseDown(event) {
+    if (!this.searchResults) {
+      return;
     }
-
-    handleArrowUp() {
-        if (!this.searchResults?.length) {
-            return false;
-        }
-        if (this.highlightedIndex < 0) {
-            return false;
-        }
-        if (this.highlightedIndex <= 0) {
-            this.highlightedIndex = -1;
-        } else {
-            this.highlightedIndex -= 1;
-        }
-        this.scheduleScrollToHighlight();
-        return true;
+    const inside = this.isEventInsideThisComponent(event);
+    if (!inside) {
+      this.clearSearchResults();
     }
+  }
 
-    handleHomeKey() {
-        if (!this.searchResults?.length) {
-            return false;
-        }
-        this.highlightedIndex = 0;
-        this.scheduleScrollToHighlight();
-        return true;
+  notifyPanelOpened() {
+    if (!this._panelOpen) {
+      this._panelOpen = true;
+      this.dispatchEvent(
+        new CustomEvent("open", { bubbles: true, composed: true }),
+      );
     }
+  }
 
-    handleEndKey() {
-        if (!this.searchResults?.length) {
-            return false;
-        }
-        this.highlightedIndex = this.searchResults.length - 1;
-        this.scheduleScrollToHighlight();
-        return true;
+  notifyPanelClosed() {
+    if (this._panelOpen) {
+      this._panelOpen = false;
+      this.dispatchEvent(
+        new CustomEvent("close", { bubbles: true, composed: true }),
+      );
     }
+  }
 
-    listboxPageSize() {
-        return 5;
+  dispatchChange() {
+    const sel = this.selectedSearchResult;
+    this.dispatchEvent(
+      new CustomEvent("change", {
+        bubbles: true,
+        composed: true,
+        detail: {
+          value: sel ? sel.value : undefined,
+          label: sel ? sel.label : undefined,
+          name: this.name,
+        },
+      }),
+    );
+  }
+
+  normalizeKey(event) {
+    if (event.key) {
+      return event.key;
     }
-
-    handlePageDownKey() {
-        if (!this.searchResults?.length) {
-            return false;
-        }
-        const len = this.searchResults.length;
-        const step = this.listboxPageSize();
-        if (this.highlightedIndex < 0) {
-            this.highlightedIndex = 0;
-        } else {
-            this.highlightedIndex = Math.min(
-                this.highlightedIndex + step,
-                len - 1
-            );
-        }
-        this.scheduleScrollToHighlight();
-        return true;
+    const d = event.detail;
+    if (d && d.key) {
+      return d.key;
     }
+    const code = event.keyCode ?? d?.keyCode;
+    const map = {
+      40: "ArrowDown",
+      38: "ArrowUp",
+      13: "Enter",
+      27: "Escape",
+      36: "Home",
+      35: "End",
+      33: "PageUp",
+      34: "PageDown",
+    };
+    return map[code] || "";
+  }
 
-    handlePageUpKey() {
-        if (!this.searchResults?.length) {
-            return false;
-        }
-        const step = this.listboxPageSize();
-        if (this.highlightedIndex < 0) {
-            this.highlightedIndex = 0;
-        } else {
-            this.highlightedIndex = Math.max(this.highlightedIndex - step, 0);
-        }
-        this.scheduleScrollToHighlight();
-        return true;
+  handleInputKeydown(event) {
+    const key = this.normalizeKey(event);
+    let handled = false;
+    switch (key) {
+      case "ArrowDown":
+        handled = this.handleArrowDown();
+        break;
+      case "ArrowUp":
+        handled = this.handleArrowUp();
+        break;
+      case "Home":
+        handled = this.handleHomeKey();
+        break;
+      case "End":
+        handled = this.handleEndKey();
+        break;
+      case "PageUp":
+        handled = this.handlePageUpKey();
+        break;
+      case "PageDown":
+        handled = this.handlePageDownKey();
+        break;
+      case "Enter":
+        handled = this.handleEnterKey();
+        break;
+      case "Escape":
+        handled = this.handleEscapeKey();
+        break;
+      default:
+        break;
     }
-
-    handleEnterKey() {
-        if (
-            !this.searchResults?.length ||
-            this.highlightedIndex < 0 ||
-            this.highlightedIndex >= this.searchResults.length
-        ) {
-            return false;
-        }
-        const row = this.searchResults[this.highlightedIndex];
-        this.selectByValue(row.value);
-        return true;
+    if (handled) {
+      event.preventDefault();
     }
+  }
 
-    handleEscapeKey() {
-        if (!this.searchResults) {
-            return false;
-        }
-        this.clearSearchResults();
-        return true;
+  handleArrowDown() {
+    if (!this.pickListOrdered?.length) {
+      return false;
     }
-
-    /**
-     * Scroll active row within the dropdown viewport (Salesforce baseCombobox pattern).
-     */
-    scrollIntoViewWithin(element, scrollParent) {
-        if (!element || !scrollParent) {
-            return;
-        }
-        const parentRect = scrollParent.getBoundingClientRect();
-        const elRect = element.getBoundingClientRect();
-        if (elRect.top < parentRect.top) {
-            scrollParent.scrollTop += elRect.top - parentRect.top;
-        } else if (elRect.bottom > parentRect.bottom) {
-            scrollParent.scrollTop += elRect.bottom - parentRect.bottom;
-        }
+    if (!this.searchResults) {
+      const wasClosed = !this.panelIsOpen;
+      this.searchResults = this.pickListOrdered;
+      this.highlightedIndex = 0;
+      this.ensureOutsideDismissListenerSoon();
+      if (wasClosed) {
+        this.notifyPanelOpened();
+      }
+      this.scheduleScrollToHighlight();
+      return true;
     }
-
-    scheduleScrollToHighlight() {
-        if (this.highlightedIndex < 0) {
-            return;
-        }
-        requestAnimationFrame(() => {
-            const scrollHost = this.template.querySelector(
-                "[data-listbox-scroll]"
-            );
-            const el = this.template.querySelector(
-                `[data-option-index="${this.highlightedIndex}"]`
-            );
-            if (el && scrollHost) {
-                this.scrollIntoViewWithin(el, scrollHost);
-            } else {
-                el?.scrollIntoView({ block: "nearest", inline: "nearest" });
-            }
-        });
+    const len = this.searchResults.length;
+    if (len === 0) {
+      return false;
     }
-
-    search(event) {
-        if (!this.pickListOrdered) {
-            return;
-        }
-        const wasOpen = this.panelIsOpen;
-        const rawValue = event?.detail?.value ?? "";
-        const input = rawValue.toLowerCase();
-        // Clearing the search input (via the built-in clear button or manual delete)
-        // should clear the current selection so the checkmark disappears immediately.
-        if (rawValue === "" && this.selectedSearchResult) {
-            this.selectedSearchResult = null;
-            this.dispatchChange();
-        }
-        const result = this.pickListOrdered.filter((pickListOption) =>
-            pickListOption.label.toLowerCase().includes(input)
-        );
-        this.searchResults = result;
-        this.highlightedIndex = -1;
-        if (!wasOpen) {
-            this.notifyPanelOpened();
-        }
-        this.ensureOutsideDismissListenerSoon();
+    if (this.highlightedIndex < 0) {
+      this.highlightedIndex = 0;
+    } else {
+      this.highlightedIndex = Math.min(this.highlightedIndex + 1, len - 1);
     }
+    this.scheduleScrollToHighlight();
+    return true;
+  }
 
-    /**
-     * Keeps document-level mousedown dismiss from seeing listbox presses. Without
-     * this, shadow/event retargeting can mark the target as "outside" and clear
-     * the list before the option's click runs.
-     */
-    suppressListboxMouseDownPropagation(event) {
-        event.stopPropagation();
+  handleArrowUp() {
+    if (!this.searchResults?.length) {
+      return false;
     }
-
-    handleOptionMouseEnter(event) {
-        if (!this.searchResults?.length) {
-            return;
-        }
-        const idx = parseInt(event.currentTarget.dataset.optionIndex, 10);
-        if (!Number.isNaN(idx)) {
-            this.highlightedIndex = idx;
-        }
+    if (this.highlightedIndex < 0) {
+      return false;
     }
-
-    selectSearchResult(event) {
-        const selectedValue = event.currentTarget.dataset.value;
-        this.selectByValue(selectedValue);
+    if (this.highlightedIndex <= 0) {
+      this.highlightedIndex = -1;
+    } else {
+      this.highlightedIndex -= 1;
     }
+    this.scheduleScrollToHighlight();
+    return true;
+  }
 
-    selectByValue(value) {
-        this.selectedSearchResult = this.pickListOrdered.find(
-            (pickListOption) => pickListOption.value === value
-        );
+  handleHomeKey() {
+    if (!this.searchResults?.length) {
+      return false;
+    }
+    this.highlightedIndex = 0;
+    this.scheduleScrollToHighlight();
+    return true;
+  }
+
+  handleEndKey() {
+    if (!this.searchResults?.length) {
+      return false;
+    }
+    this.highlightedIndex = this.searchResults.length - 1;
+    this.scheduleScrollToHighlight();
+    return true;
+  }
+
+  listboxPageSize() {
+    return 5;
+  }
+
+  handlePageDownKey() {
+    if (!this.searchResults?.length) {
+      return false;
+    }
+    const len = this.searchResults.length;
+    const step = this.listboxPageSize();
+    if (this.highlightedIndex < 0) {
+      this.highlightedIndex = 0;
+    } else {
+      this.highlightedIndex = Math.min(this.highlightedIndex + step, len - 1);
+    }
+    this.scheduleScrollToHighlight();
+    return true;
+  }
+
+  handlePageUpKey() {
+    if (!this.searchResults?.length) {
+      return false;
+    }
+    const step = this.listboxPageSize();
+    if (this.highlightedIndex < 0) {
+      this.highlightedIndex = 0;
+    } else {
+      this.highlightedIndex = Math.max(this.highlightedIndex - step, 0);
+    }
+    this.scheduleScrollToHighlight();
+    return true;
+  }
+
+  handleEnterKey() {
+    if (
+      !this.searchResults?.length ||
+      this.highlightedIndex < 0 ||
+      this.highlightedIndex >= this.searchResults.length
+    ) {
+      return false;
+    }
+    const row = this.searchResults[this.highlightedIndex];
+    this.selectByValue(row.value);
+    return true;
+  }
+
+  handleEscapeKey() {
+    if (!this.searchResults) {
+      return false;
+    }
+    this.clearSearchResults();
+    return true;
+  }
+
+  /**
+   * Scroll active row within the dropdown viewport (Salesforce baseCombobox pattern).
+   */
+  scrollIntoViewWithin(element, scrollParent) {
+    if (!element || !scrollParent) {
+      return;
+    }
+    const parentRect = scrollParent.getBoundingClientRect();
+    const elRect = element.getBoundingClientRect();
+    if (elRect.top < parentRect.top) {
+      scrollParent.scrollTop += elRect.top - parentRect.top;
+    } else if (elRect.bottom > parentRect.bottom) {
+      scrollParent.scrollTop += elRect.bottom - parentRect.bottom;
+    }
+  }
+
+  scheduleScrollToHighlight() {
+    if (this.highlightedIndex < 0) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      const scrollHost = this.template.querySelector("[data-listbox-scroll]");
+      const el = this.template.querySelector(
+        `[data-option-index="${this.highlightedIndex}"]`,
+      );
+      if (el && scrollHost) {
+        this.scrollIntoViewWithin(el, scrollHost);
+      } else {
+        el?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      }
+    });
+  }
+
+  search(event) {
+    if (!this.pickListOrdered) {
+      return;
+    }
+    const rawValue = event?.detail?.value ?? "";
+    // Clearing the input (via the built-in clear ('x') button or full delete)
+    // clears the current selection and closes the dropdown.
+    if (rawValue === "") {
+      if (this.selectedSearchResult) {
+        this.selectedSearchResult = null;
         this.dispatchChange();
-        this.clearSearchResults();
+      }
+      this.clearSearchResults();
+      return;
     }
+    const wasOpen = this.panelIsOpen;
+    const input = rawValue.toLowerCase();
+    const result = this.pickListOrdered.filter((pickListOption) =>
+      pickListOption.label.toLowerCase().includes(input),
+    );
+    this.searchResults = result;
+    this.highlightedIndex = -1;
+    if (!wasOpen) {
+      this.notifyPanelOpened();
+    }
+    this.ensureOutsideDismissListenerSoon();
+  }
 
-    clearSearchResults() {
-        this.teardownOutsideDismissListener();
-        this.searchResults = null;
-        this.highlightedIndex = -1;
-        this.notifyPanelClosed();
-    }
+  /**
+   * Keeps document-level mousedown dismiss from seeing listbox presses. Without
+   * this, shadow/event retargeting can mark the target as "outside" and clear
+   * the list before the option's click runs.
+   */
+  suppressListboxMouseDownPropagation(event) {
+    event.stopPropagation();
+  }
 
-    /**
-     * Opens the list when the field gains focus or receives a pointer down.
-     * Focus alone misses the common case: input already focused after the list
-     * was closed, or some lightning-input focus paths that differ from label clicks.
-     */
-    openDropdownIfClosed() {
-        if (!this.pickListOrdered || this.searchResults) {
-            return;
-        }
-        const wasClosed = !this.panelIsOpen;
-        this.searchResults = this.pickListOrdered;
-        this.highlightedIndex = -1;
-        if (wasClosed) {
-            this.notifyPanelOpened();
-        }
-        this.ensureOutsideDismissListenerSoon();
+  handleOptionMouseEnter(event) {
+    if (!this.searchResults?.length) {
+      return;
     }
+    const idx = parseInt(event.currentTarget.dataset.optionIndex, 10);
+    if (!Number.isNaN(idx)) {
+      this.highlightedIndex = idx;
+    }
+  }
+
+  selectSearchResult(event) {
+    const selectedValue = event.currentTarget.dataset.value;
+    this.selectByValue(selectedValue);
+  }
+
+  selectByValue(value) {
+    this.selectedSearchResult = this.pickListOrdered.find(
+      (pickListOption) => pickListOption.value === value,
+    );
+    this.dispatchChange();
+    this.clearSearchResults();
+  }
+
+  clearSearchResults() {
+    this.teardownOutsideDismissListener();
+    this.searchResults = null;
+    this.highlightedIndex = -1;
+    this.notifyPanelClosed();
+  }
+
+  /**
+   * Opens the list when the field gains focus or receives a pointer down.
+   * Focus alone misses the common case: input already focused after the list
+   * was closed, or some lightning-input focus paths that differ from label clicks.
+   */
+  openDropdownIfClosed() {
+    if (!this.pickListOrdered || this.searchResults) {
+      return;
+    }
+    const wasClosed = !this.panelIsOpen;
+    this.searchResults = this.pickListOrdered;
+    this.highlightedIndex = -1;
+    if (wasClosed) {
+      this.notifyPanelOpened();
+    }
+    this.ensureOutsideDismissListenerSoon();
+  }
 }
