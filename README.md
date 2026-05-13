@@ -13,6 +13,7 @@ Salesforce's standard `lightning-combobox` is a good fit for short option lists,
 - **Dropdown UI**: Renders the searchable option list with the SLDS combobox/listbox pattern, including a checkmark for the selected option.
 - **Filtering**: Filters options using a case-insensitive substring match against each option label.
 - **Selection state**: Keeps the selected option in shared component state, so the selection is preserved if reactive `options` or `searchThreshold` changes switch rendering modes.
+- **Deferred value resolution**: Parents can set `value` before `options` loads. The component stores the pending value and resolves it automatically when options arrive, eliminating race-condition workarounds common with Apex data sources.
 
 ## Public API
 
@@ -22,6 +23,7 @@ Salesforce's standard `lightning-combobox` is a good fit for short option lists,
 - **`name`** (String): Included in `change` event payloads, which is useful for forms.
 - **`placeholder`** (String): Placeholder text for the input. Defaults to `"Search"`.
 - **`options`** (Array): Array of `{ label: string, value: string }` options.
+- **`value`** (String): The currently selected option value. Supports deferred resolution — if set before `options` has loaded (e.g. from an Apex call), the value is held internally and resolved automatically once `options` arrives. Reading `value` returns the selected option's value or `null`.
 - **`searchThreshold`** (Number): Maximum option count that should render the native `lightning-combobox`. Defaults to `10`.
 - **`clear()`** (Function): Imperative API that clears the current selection and closes the searchable dropdown when it is open.
 
@@ -118,3 +120,20 @@ Prefer the native `lightning-combobox` for larger lists by setting a higher thre
 >
 </c-searchable-combobox>
 ```
+
+## Deferred Value Resolution
+
+When `value` is set before `options` has loaded — a common pattern when the parent binds a record field while picklist data is still in flight from Apex — the component stores the value internally and resolves it once `options` arrives.
+
+```html
+<c-searchable-combobox
+  label="Account"
+  name="accountId"
+  value={record.AccountId}
+  options={accountOptions}
+  onchange={handleAccountChange}
+>
+</c-searchable-combobox>
+```
+
+No extra parent-side timing logic is needed. If `record.AccountId` resolves before `accountOptions`, the selection is deferred. If `accountOptions` resolves first, the `value` setter finds the match immediately.

@@ -26,6 +26,12 @@ import { LightningElement, api } from "lwc";
  * - `name` (String): included in the dispatched `change` event detail (useful for forms)
  * - `placeholder` (String): placeholder for the search input
  * - `options` (Array<{label: string, value: string}>): list of options to display
+ * - `value` (String): the currently selected option value. Supports two-way
+ *   binding and deferred resolution — if the parent sets `value` before
+ *   `options` have loaded (common with Apex picklists), the value is held as
+ *   a pending selection and resolved automatically once `options` arrives.
+ *   Setting `value` to a falsy value (excluding `0`) clears the selection.
+ *   Reading `value` returns the selected option's value, or `null`.
  * - `searchThreshold` (Number, default `10`): controls the small-list fallback.
  *   When `options.length <= searchThreshold`, the component renders a standard
  *   `lightning-combobox` (the native Salesforce picker) instead of the searchable
@@ -51,6 +57,14 @@ import { LightningElement, api } from "lwc";
  * - **Selection persistence**: the internally tracked selection is shared
  *   across both paths, so a value selected in one mode is preserved if the
  *   options array later crosses the threshold.
+ *
+ * ## Deferred value resolution
+ * Parents often set `value` declaratively while `options` are still loading
+ * from an Apex call. The `value` setter detects this: if `options` is not yet
+ * populated, the value is stored as `_pendingValue`. When `options` is later
+ * set, the `options` setter checks for a pending value and resolves it
+ * against the new option list, selecting the matching option automatically.
+ * This eliminates the need for parent-side timing workarounds.
  *
  * ## Events (parent-facing)
  * - **`change`** (bubbles + composed):
@@ -104,6 +118,22 @@ import { LightningElement, api } from "lwc";
  *
  * Where `accountOptions` is an array like:
  * `[{ label: 'Acme', value: '001...' }, ...]`
+ *
+ * ## Example: pre-selecting a value before options load
+ *
+ * ```html
+ * <c-searchable-combobox
+ *   label="Account"
+ *   name="accountId"
+ *   value={record.AccountId}
+ *   options={accountOptions}
+ *   onchange={handleAccountChange}>
+ * </c-searchable-combobox>
+ * ```
+ *
+ * If `record.AccountId` is set before `accountOptions` returns from Apex, the
+ * component defers the selection until the options arrive, then resolves it
+ * automatically.
  *
  * ## Example: tuning `searchThreshold`
  *
