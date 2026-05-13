@@ -150,11 +150,29 @@ export default class SearchableCombobox extends LightningElement {
   listboxId;
 
   _options;
+  _pendingValue;
 
   @api label = "Searchable Combobox";
   @api name;
   @api placeholder = "Search";
   @api searchThreshold = 10;
+
+  @api
+  get value() {
+    return this.selectedSearchResult?.value ?? null;
+  }
+  set value(val) {
+    if (!val && val !== 0) {
+      this.selectedSearchResult = null;
+      this._pendingValue = undefined;
+      return;
+    }
+    if (this._resolveValue(val)) {
+      this._pendingValue = undefined;
+    } else {
+      this._pendingValue = val;
+    }
+  }
 
   @api
   get options() {
@@ -169,6 +187,21 @@ export default class SearchableCombobox extends LightningElement {
     } else {
       this.pickListOrdered = undefined;
     }
+    if (this._pendingValue !== undefined) {
+      if (this._resolveValue(this._pendingValue)) {
+        this._pendingValue = undefined;
+      }
+    }
+  }
+
+  _resolveValue(val) {
+    if (!this._options) return false;
+    const match = this._options.find((opt) => opt.value === val);
+    if (match) {
+      this.selectedSearchResult = match;
+      return true;
+    }
+    return false;
   }
 
   /**
